@@ -6,8 +6,17 @@ import type {
   Robot,
   Mission,
   GameConfig,
+  Personality,
+  MissionType,
+  DreamTheme,
 } from '../types';
 import { PART_TEMPLATES } from '../data/defaultConfig';
+import {
+  PERSONALITY_BONUS,
+  SPECIALTY_BONUS,
+  TRUST_WEIGHT,
+  DREAM_TRIGGERS,
+} from '../data/dreamScenarios';
 
 const PART_TYPES: PartType[] = ['head', 'body', 'arm', 'leg', 'core', 'tool'];
 const RARITY_ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
@@ -212,9 +221,105 @@ export function calculateAdaptability(
   maxScore += weights.durability;
 
   const baseScore = maxScore > 0 ? (score / maxScore) * 100 : 0;
-  const finalScore = Math.max(0, baseScore * (1 - penalty));
+  let finalScore = Math.max(0, baseScore * (1 - penalty));
+
+  const personality = robot.personality ?? 'neutral';
+  const specialty = robot.specialty ?? null;
+  const trust = robot.trust ?? 50;
+  let bonus = getPersonalityBonus(personality, mission.type);
+  if (specialty === mission.type) bonus += SPECIALTY_BONUS;
+  bonus += Math.round((trust - 50) * TRUST_WEIGHT);
+  finalScore = clamp(finalScore + bonus, 0, 100);
 
   return Math.round(finalScore);
+}
+
+export function getPersonalityBonus(
+  personality: Personality,
+  missionType: MissionType,
+): number {
+  return PERSONALITY_BONUS[personality]?.[missionType] ?? 0;
+}
+
+export interface DreamTrigger {
+  triggered: boolean;
+  theme: DreamTheme;
+  reason: string;
+}
+
+export function getDreamTrigger(robot: Robot): DreamTrigger {
+  const durabilityRatio =
+    robot.maxDurability > 0 ? robot.durability / robot.maxDurability : 1;
+
+  if (robot.consecutiveFailures >= DREAM_TRIGGERS.consecutiveFailures) {
+    return {
+      triggered: true,
+      theme: 'failure',
+      reason: `连续失败 ${robot.consecutiveFailures} 次`,
+    };
+  }
+  if (durabilityRatio <= DREAM_TRIGGERS.lowDurabilityRatio) {
+    return { triggered: true, theme: 'combat', reason: '耐久度过低' };
+  }
+  if (robot.fatigue >= DREAM_TRIGGERS.highFatigue) {
+    return { triggered: true, theme: 'rescue', reason: '疲劳度过高' };
+  }
+  return { triggered: false, theme: 'failure', reason: '' };
+}
+
+const MISSION_REACTIONS: Record<
+  Personality,
+  { success: string[]; fail: string[] }
+> = {
+  neutral: {
+    success: ['它默默完成了任务，指示灯平静地闪烁。'],
+    fail: ['它沉默地停下，等待下一次指令。'],
+  },
+  brave: {
+    success: [
+      '它昂首返回，瞄准镜仍在微微发烫，战意未消。',
+      '它毫不畏惧地冲过终点，眼里燃着光。',
+    ],
+    fail: ['它不甘地捶地，发誓下次必胜。', '它重重撞了一下墙，拒绝接受失败。'],
+  },
+  cautious: {
+    success: [
+      '它反复确认无误后，才安心地返回。',
+      '它谨慎地走完每个步骤，毫发无损。',
+    ],
+    fail: ['它仔细复盘了失误，在脑海里标记了三个改进点。'],
+  },
+  empathetic: {
+    success: ['它温柔地完成任务，眼中光芒柔和。', '它轻声安抚了受助者后才离开。'],
+    fail: ['它为没能帮到所有人而黯然，光芒低垂。'],
+  },
+  rational: {
+    success: [
+      '它冷静记录数据，认为结果在预期之内。',
+      '它分析了任务流程，效率又提升了一点。',
+    ],
+    fail: ['它冷静归因，把失败归类为可优化变量。'],
+  },
+  reckless: {
+    success: ['它兴奋地挥舞零件，不顾损耗地庆祝。', '它一路横冲直撞地完成了任务。'],
+    fail: ['它暴躁地踢开碎石，没意识到是自己的鲁莽。'],
+  },
+};
+
+export function getMissionReaction(
+  personality: Personality,
+  success: boolean,
+  trust: number,
+): string {
+  const pool = MISSION_REACTIONS[personality][success ? 'success' : 'fail'];
+  const base = pool[Math.floor(Math.random() * pool.length)];
+  if (trust >= 80) {
+    return `${base} 它对你的指挥充满信赖，配合格外默契。`;
+  }
+  if (trust < 30) {
+    return `${base} 不过，它似乎并未完全信服你的调度。`;
+  }
+  return base;
 }
 
 export function formatDate(timestamp: number): string {

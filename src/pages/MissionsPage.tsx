@@ -17,6 +17,8 @@ import {
   AlertTriangle,
   RotateCcw,
   History,
+  Quote,
+  Battery,
 } from 'lucide-react';
 import { PageContainer } from '../components/PageContainer';
 import { RobotCard } from '../components/RobotCard';
@@ -345,8 +347,13 @@ export function MissionsPage() {
                     )}
 
                     <p className="text-white/50 mb-4">
-                      适配度: {missionResult.adaptability}% | 耐久损耗: -{missionResult.durabilityLoss}
+                      适配度: {missionResult.adaptability}% | 耐久损耗: -{missionResult.durabilityLoss} | 疲劳: +{missionResult.fatigueGain}
                     </p>
+
+                    <div className="flex items-start gap-2 mb-4 mx-auto max-w-md text-left p-3 rounded-xl bg-background-tertiary">
+                      <Quote className="w-4 h-4 text-neon-purple flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-white/70 italic leading-relaxed">{missionResult.reaction}</p>
+                    </div>
 
                     {missionResult.success && (
                       <div className="flex items-center justify-center gap-6 mb-4">
@@ -416,9 +423,13 @@ export function MissionsPage() {
                     <span className="text-white/40">→</span>
                     <span className="text-neon-blue truncate">{record.robotName}</span>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-white/50">
+                  <div className="flex items-center gap-4 text-xs text-white/50 flex-wrap">
                     <span>适配度: {record.adaptability}%</span>
                     <span>耐久损耗: -{record.durabilityLoss}</span>
+                    <span className="flex items-center gap-0.5">
+                      <Battery className="w-3 h-3" />
+                      疲劳: +{record.fatigueGain}
+                    </span>
                     <span className="text-neon-orange">
                       +{record.rewards.credits} 信用点
                     </span>
@@ -426,6 +437,9 @@ export function MissionsPage() {
                       +{record.rewards.materials} 材料
                     </span>
                   </div>
+                  <p className="text-[11px] text-white/40 italic truncate mt-0.5">
+                    {record.reaction}
+                  </p>
                 </div>
                 <span className="text-xs text-white/30 flex-shrink-0">
                   {formatDate(record.completedAt)}

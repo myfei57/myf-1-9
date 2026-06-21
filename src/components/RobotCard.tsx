@@ -1,9 +1,18 @@
 import { motion } from 'framer-motion';
-import { Bot, Heart, Scale, Gauge, Layers, AlertTriangle, Sparkles } from 'lucide-react';
-import type { Robot } from '../types';
+import { Bot, Heart, Scale, Gauge, Layers, AlertTriangle, Sparkles, Battery } from 'lucide-react';
+import type { Robot, MissionType } from '../types';
 import { useGameStore } from '../store/useGameStore';
 import { StatBar } from './StatBar';
 import { PART_TYPE_NAMES } from '../data/defaultConfig';
+import { PERSONALITY_INFO, getDreamIcon } from '../data/dreamScenarios';
+import { accentClasses } from '../lib/utils';
+
+const MISSION_TYPE_LABELS: Record<MissionType, string> = {
+  transport: '运输',
+  cleaning: '清洁',
+  rescue: '救援',
+  combat: '战斗',
+};
 
 interface RobotCardProps {
   robot: Robot;
@@ -18,6 +27,11 @@ export function RobotCard({ robot, onClick, selected = false, showDetails = fals
   const durabilityPercent = (robot.durability / robot.maxDurability) * 100;
   const durabilityColor =
     durabilityPercent > 60 ? 'green' : durabilityPercent > 30 ? 'orange' : 'red';
+
+  const fatigueColor = robot.fatigue >= 70 ? 'red' : robot.fatigue >= 30 ? 'orange' : 'green';
+  const personalityInfo = PERSONALITY_INFO[robot.personality];
+  const PersonalityIcon = getDreamIcon(personalityInfo.icon);
+  const personalityAccent = accentClasses(personalityInfo.color);
 
   const installedPartsCount = Object.values(robot.parts).filter(Boolean).length;
 
@@ -54,8 +68,23 @@ export function RobotCard({ robot, onClick, selected = false, showDetails = fals
             {installedPartsCount}/6 零件 | 返修 {robot.repairCount} 次
           </p>
 
-          {robot.activeSetBonuses.length > 0 && (
+          {(robot.activeSetBonuses.length > 0 ||
+            robot.personality !== 'neutral' ||
+            robot.specialty) && (
             <div className="flex flex-wrap gap-1 mb-2">
+              {robot.personality !== 'neutral' && (
+                <span
+                  className={`flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full ${personalityAccent.bg} ${personalityAccent.text}`}
+                >
+                  <PersonalityIcon className="w-3 h-3" />
+                  {personalityInfo.label}
+                </span>
+              )}
+              {robot.specialty && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-neon-cyan/20 text-neon-cyan">
+                  专精·{MISSION_TYPE_LABELS[robot.specialty]}
+                </span>
+              )}
               {robot.activeSetBonuses.map((setId) => {
                 const setConfig = config.setBonuses[setId];
                 if (!setConfig) return null;
@@ -96,6 +125,15 @@ export function RobotCard({ robot, onClick, selected = false, showDetails = fals
             color={durabilityColor}
             size="sm"
           />
+          <div className="mt-1.5">
+            <StatBar
+              label="疲劳度"
+              value={robot.fatigue}
+              max={100}
+              color={fatigueColor}
+              size="sm"
+            />
+          </div>
         </div>
       </div>
 

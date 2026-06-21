@@ -8,6 +8,8 @@ import type {
   Robot,
   MissionRecord,
   RepairRecord,
+  DreamRecord,
+  DreamSummary,
   AssemblyPlan,
   GameConfig,
 } from '../types';
@@ -23,6 +25,7 @@ import {
   generateRandomPart,
   calculateRobotStats as calcStats,
   calculateAdaptability as calcAdapt,
+  getMissionReaction,
   clamp,
 } from '../utils/helpers';
 
@@ -35,6 +38,18 @@ const EMPTY_SELECTED_PARTS: Record<PartType, Part | null> = {
   tool: null,
 };
 
+type PersistedGameState = {
+  parts: Part[];
+  robots: Robot[];
+  credits: number;
+  materials: number;
+  missionRecords: MissionRecord[];
+  repairRecords: RepairRecord[];
+  dreamRecords: DreamRecord[];
+  assemblyPlans: AssemblyPlan[];
+  config: GameConfig;
+};
+
 export const useGameStore = create<Store>()(
   persist(
     (set, get) => ({
@@ -44,6 +59,7 @@ export const useGameStore = create<Store>()(
       materials: INITIAL_MATERIALS,
       missionRecords: [],
       repairRecords: [],
+      dreamRecords: [],
       assemblyPlans: [],
       config: DEFAULT_CONFIG,
       selectedParts: { ...EMPTY_SELECTED_PARTS },
@@ -105,6 +121,73 @@ export const useGameStore = create<Store>()(
 
       addRepairRecord: (record) =>
         set((state) => ({ repairRecords: [...state.repairRecords, record] })),
+
+      addDreamRecord: (record) =>
+        set((state) => ({ dreamRecords: [...state.dreamRecords, record] })),
+
+      resolveDream: (robotId, triggerReason, summary) => {
+        const state = get();
+        const robot = state.robots.find((r) => r.id === robotId);
+        if (!robot) {
+          throw new Error('Robot not found');
+        }
+
+        const { effects } = summary;
+        const trustBefore = robot.trust;
+        const newTrust = clamp(
+          robot.trust + (effects.trustDelta ?? 0),
+          0,
+          100,
+        );
+        const newFatigue = clamp(
+          robot.fatigue + (effects.fatigueDelta ?? 0),
+          0,
+          100,
+        );
+        const newDurability = clamp(
+          robot.durability + (effects.durabilityDelta ?? 0),
+          0,
+          robot.maxDurability,
+        );
+
+        const updates: Partial<Robot> = {
+          trust: newTrust,
+          fatigue: newFatigue,
+          durability: newDurability,
+          dreamCount: robot.dreamCount + 1,
+        };
+
+        if (effects.personalitySet) {
+          updates.personality = effects.personalitySet;
+        }
+        if (effects.specialtyGain) {
+          updates.specialty = effects.specialtyGain;
+        }
+        if (summary.theme === 'failure') {
+          updates.consecutiveFailures = 0;
+        }
+
+        state.updateRobot(robotId, updates);
+
+        const record: DreamRecord = {
+          id: generateId(),
+          robotId: robot.id,
+          robotName: robot.name,
+          theme: summary.theme,
+          triggerReason,
+          path: summary.path,
+          choices: summary.choices,
+          emotions: summary.emotions,
+          finalEmotion: summary.finalEmotion,
+          effects,
+          trustBefore,
+          trustAfter: newTrust,
+          completedAt: Date.now(),
+        };
+        state.addDreamRecord(record);
+
+        return record;
+      },
 
       addAssemblyPlan: (plan) =>
         set((state) => ({ assemblyPlans: [...state.assemblyPlans, plan] })),
@@ -216,7 +299,18 @@ export const useGameStore = create<Store>()(
         }
 
         const newDurability = clamp(robot.durability - durabilityLoss, 0, robot.maxDurability);
-        state.updateRobot(robotId, { durability: newDurability });
+
+        let fatigueGain = 8 + mission.difficulty * 2;
+        if (robot.isOverloaded) fatigueGain += 5;
+        if (!success) fatigueGain += 6;
+        const newFatigue = clamp(robot.fatigue + fatigueGain, 0, 100);
+        const newConsecutiveFailures = success ? 0 : robot.consecutiveFailures + 1;
+
+        state.updateRobot(robotId, {
+          durability: newDurability,
+          fatigue: newFatigue,
+          consecutiveFailures: newConsecutiveFailures,
+        });
 
         let rewards = { credits: 0, materials: 0 };
         if (success) {
@@ -233,6 +327,8 @@ export const useGameStore = create<Store>()(
           }
         }
 
+        const reaction = getMissionReaction(robot.personality, success, robot.trust);
+
         const record: MissionRecord = {
           id: generateId(),
           robotId: robot.id,
@@ -243,6 +339,8 @@ export const useGameStore = create<Store>()(
           adaptability,
           rewards,
           durabilityLoss,
+          fatigueGain,
+          reaction,
           completedAt: Date.now(),
         };
         state.addMissionRecord(record);
@@ -294,12 +392,30 @@ export const useGameStore = create<Store>()(
           materials: INITIAL_MATERIALS,
           missionRecords: [],
           repairRecords: [],
+          dreamRecords: [],
           assemblyPlans: [],
           selectedParts: { ...EMPTY_SELECTED_PARTS },
         }),
     }),
     {
       name: 'robot-workshop-storage',
+      version: 2,
+      migrate: (persistedState, version) => {
+        const s = (persistedState ?? {}) as Partial<PersistedGameState>;
+        if (version < 2) {
+          s.robots = (s.robots ?? []).map((r) => ({
+            ...r,
+            fatigue: r.fatigue ?? 0,
+            consecutiveFailures: r.consecutiveFailures ?? 0,
+            personality: r.personality ?? 'neutral',
+            specialty: r.specialty ?? null,
+            trust: r.trust ?? 50,
+            dreamCount: r.dreamCount ?? 0,
+          }));
+          s.dreamRecords = s.dreamRecords ?? [];
+        }
+        return s as PersistedGameState;
+      },
       partialize: (state) => ({
         parts: state.parts,
         robots: state.robots,
@@ -307,6 +423,7 @@ export const useGameStore = create<Store>()(
         materials: state.materials,
         missionRecords: state.missionRecords,
         repairRecords: state.repairRecords,
+        dreamRecords: state.dreamRecords,
         assemblyPlans: state.assemblyPlans,
         config: state.config,
       }),

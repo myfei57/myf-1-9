@@ -30,6 +30,12 @@ export interface Robot {
   durability: number;
   maxDurability: number;
   repairCount: number;
+  fatigue: number;
+  consecutiveFailures: number;
+  personality: Personality;
+  specialty: MissionType | null;
+  trust: number;
+  dreamCount: number;
   isOverloaded: boolean;
   compatibilityIssues: string[];
   activeSetBonuses: string[];
@@ -67,6 +73,86 @@ export interface MissionRecord {
   adaptability: number;
   rewards: { credits: number; materials: number };
   durabilityLoss: number;
+  fatigueGain: number;
+  reaction: string;
+  completedAt: number;
+}
+
+export type Personality =
+  | 'neutral'
+  | 'brave'
+  | 'cautious'
+  | 'empathetic'
+  | 'rational'
+  | 'reckless';
+
+export type DreamTheme = 'failure' | 'combat' | 'rescue';
+
+export type EmotionState =
+  | 'fear'
+  | 'anger'
+  | 'sadness'
+  | 'hope'
+  | 'determination'
+  | 'confusion'
+  | 'calm';
+
+export interface DreamEffects {
+  trustDelta?: number;
+  fatigueDelta?: number;
+  durabilityDelta?: number;
+  personalitySet?: Personality;
+  specialtyGain?: MissionType;
+}
+
+export interface DreamChoice {
+  id: string;
+  label: string;
+  description: string;
+  icon: string;
+  emotionShift: EmotionState;
+  nextSceneId?: string;
+  effects: DreamEffects;
+}
+
+export interface DreamScene {
+  id: string;
+  title: string;
+  narrative: string;
+  emotion: EmotionState;
+  choices: DreamChoice[];
+}
+
+export interface DreamScenario {
+  theme: DreamTheme;
+  name: string;
+  description: string;
+  startSceneId: string;
+  scenes: Record<string, DreamScene>;
+}
+
+export interface DreamSummary {
+  theme: DreamTheme;
+  path: string[];
+  choices: string[];
+  emotions: EmotionState[];
+  finalEmotion: EmotionState;
+  effects: DreamEffects;
+}
+
+export interface DreamRecord {
+  id: string;
+  robotId: string;
+  robotName: string;
+  theme: DreamTheme;
+  triggerReason: string;
+  path: string[];
+  choices: string[];
+  emotions: EmotionState[];
+  finalEmotion: EmotionState;
+  effects: DreamEffects;
+  trustBefore: number;
+  trustAfter: number;
   completedAt: number;
 }
 
@@ -143,6 +229,7 @@ export interface GameState {
   materials: number;
   missionRecords: MissionRecord[];
   repairRecords: RepairRecord[];
+  dreamRecords: DreamRecord[];
   assemblyPlans: AssemblyPlan[];
   config: GameConfig;
   selectedParts: Record<PartType, Part | null>;
@@ -161,6 +248,8 @@ export interface GameActions {
   spendMaterials: (amount: number) => boolean;
   addMissionRecord: (record: MissionRecord) => void;
   addRepairRecord: (record: RepairRecord) => void;
+  addDreamRecord: (record: DreamRecord) => void;
+  resolveDream: (robotId: string, triggerReason: string, summary: DreamSummary) => DreamRecord;
   addAssemblyPlan: (plan: AssemblyPlan) => void;
   removeAssemblyPlan: (planId: string) => void;
   updateConfig: (config: Partial<GameConfig>) => void;

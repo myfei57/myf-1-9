@@ -152,6 +152,12 @@ export function AssemblyPage() {
       ...stats,
       durability: stats.maxDurability,
       repairCount: 0,
+      fatigue: 0,
+      consecutiveFailures: 0,
+      personality: 'neutral',
+      specialty: null,
+      trust: 50,
+      dreamCount: 0,
       createdAt: Date.now(),
     };
 
